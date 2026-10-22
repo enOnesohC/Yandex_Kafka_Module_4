@@ -38,7 +38,7 @@ https://debezium.io/documentation/reference/stable/install.html
 
 В терминале перейдите в папку, в которой будет располагаться тестовый проект
 Выполнить команду:
-git clone https://github.com/username/repo-name.git
+git clone https://github.com/enOnesohC/Yandex_Kafka_Module_4.git
 
 Ожидаемый результат: устанавливается тестовое окружение в папку
 
