@@ -1,0 +1,308 @@
+services:
+
+  # Общие настройки Kafka для переиспользования в каждом брокере
+  x-kafka-common:
+    &kafka-common
+    image: bitnamilegacy/kafka:3.7
+    environment:
+      &kafka-common-env
+      KAFKA_ENABLE_KRAFT: yes                          # Включение режима KRaft (Kafka без Zookeeper)
+      ALLOW_PLAINTEXT_LISTENER: yes                    # Разрешение незашифрованных подключений
+      KAFKA_KRAFT_CLUSTER_ID: practicum                # Уникальный идентификатор KRaft-кластера (задан один раз при первом запуске)
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT"  # Протоколы для разных типов слушателей
+      KAFKA_CFG_PROCESS_ROLES: broker,controller       # Роль узла: одновременно брокер и контроллер метаданных
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER  # Контроллер использует listener CONTROLLER (для внутреннего кворума метаданных)
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka-0:9093,1@kafka-1:9093,2@kafka-2:9093  # Участники кворума контроллеров
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true       # Отключить автосоздание топиков
+    networks:
+      - proxynet
+
+  # Первый брокер Kafka
+  kafka-0:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "127.0.0.1:9094:9094"                           # Проброс EXTERNAL порта наружу (доступ извне)
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 0                              # Уникальный ID узла внутри кластера
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094  # Список слушателей для разных задач
+      KAFKA_JMX_PORT: 9999                           # <-- Включить JMX
+      KAFKA_JMX_HOSTNAME: kafka-0
+      KAFKA_JMX_OPTS: >-                              # <-- Явно задаём RMI-параметры
+        -Dcom.sun.management.jmxremote=true
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.port=9999
+        -Dcom.sun.management.jmxremote.rmi.port=9999
+        -Djava.rmi.server.hostname=kafka-0
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:9092,EXTERNAL://127.0.0.1:9094  # Адреса, которые Kafka "рекламирует" наружу
+    volumes:
+      - kafka_0_data:/bitnami/kafka                     # Хранилище данных Kafka
+
+  kafka-1:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "127.0.0.1:9095:9094"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_JMX_PORT: 9998                           # <-- Включить JMX
+      KAFKA_JMX_HOSTNAME: kafka-1
+      KAFKA_JMX_OPTS: >-                              # <-- Явно задаём RMI-параметры
+        -Dcom.sun.management.jmxremote=true
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.port=9998
+        -Dcom.sun.management.jmxremote.rmi.port=9998
+        -Djava.rmi.server.hostname=kafka-1
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,EXTERNAL://127.0.0.1:9095
+    volumes:
+      - kafka_1_data:/bitnami/kafka
+
+  kafka-2:
+    <<: *kafka-common
+    restart: always
+    ports:
+      - "127.0.0.1:9096:9094"
+    environment:
+      <<: *kafka-common-env
+      KAFKA_CFG_NODE_ID: 2
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_JMX_PORT: 9997                           # <-- Включить JMX
+      KAFKA_JMX_HOSTNAME: kafka-2
+      KAFKA_JMX_OPTS: >-                              # <-- Явно задаём RMI-параметры
+        -Dcom.sun.management.jmxremote=true
+        -Dcom.sun.management.jmxremote.authenticate=false
+        -Dcom.sun.management.jmxremote.ssl=false
+        -Dcom.sun.management.jmxremote.local.only=false
+        -Dcom.sun.management.jmxremote.port=9997
+        -Dcom.sun.management.jmxremote.rmi.port=9997
+        -Djava.rmi.server.hostname=kafka-2
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9092,EXTERNAL://127.0.0.1:9096
+    volumes:
+      - kafka_2_data:/bitnami/kafka
+
+  # Интерфейс управления Kafka (Kafka UI)
+  ui:
+    image: provectuslabs/kafka-ui:v0.7.0
+    restart: always
+    ports:
+      - "127.0.0.1:8080:8080"                           # Интерфейс доступен на localhost:8080
+    environment:
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-0:9092 # Указываем, где искать брокер Kafka
+      KAFKA_CLUSTERS_0_NAME: kraft                     # Название кластера в UI
+    networks:
+      - proxynet
+
+  # Schema Registry
+  schema-registry:
+    image: bitnamilegacy/schema-registry:7.6
+    ports:
+      - '127.0.0.1:8081:8081'                           # API для регистрации/получения схем
+    depends_on:
+      - kafka-0
+      - kafka-1
+      - kafka-2
+    environment:
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081    # Прослушивание запросов на порту 8081
+      SCHEMA_REGISTRY_KAFKA_BROKERS: PLAINTEXT://kafka-0:9092,PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092  # Список брокеров Kafka
+    networks:
+      - proxynet
+
+
+  connector-registrator:
+    image: alpine:3.19
+    container_name: connector-registrator
+    depends_on:
+      - kafka-connect
+    volumes:
+      - ./register-connector.sh:/register-connector.sh:ro
+      - ./pg-connector.json:/config/pg-connector.json:ro  # ваш JSON-файл
+    entrypoint: [ "/bin/sh", "-c" ]
+    command: >
+      "apk add --no-cache curl python3 && 
+       chmod +x /register-connector.sh && 
+       /register-connector.sh"
+    networks:
+      - proxynet
+    restart: "no"
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    restart: unless-stopped
+    ports:
+      - "9308:9308"
+    command:
+      - "--kafka.server=kafka-0:9092"
+      - "--kafka.server=kafka-1:9092"
+      - "--kafka.server=kafka-2:9092"
+    networks:
+      - proxynet
+
+  # База данных PostgreSQL (источник данных)
+  postgres:
+    #image: debezium/postgres:16
+    image: debezium/postgres:16
+    hostname: postgres
+    container_name: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres-user                     # Имя пользователя
+      POSTGRES_PASSWORD: postgres-pw                   # Пароль
+      POSTGRES_DB: customers                           # Название базы данных
+    networks:
+      - proxynet
+    volumes:
+      - ./infra/postgres/custom-config.conf:/etc/postgresql/postgresql.conf
+      - ./infra/postgres/01-init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+  debezium-ui:
+    image: quay.io/debezium/debezium-ui
+    container_name: debezium-ui
+    restart: always
+    ports:
+      - "127.0.0.1:8089:8080"                                    # Интерфейс доступен на localhost:8089
+    environment:
+      KAFKA_CONNECT_URIS: http://kafka-connect:8083              # Адрес REST API Kafka Connect
+    depends_on:
+      - kafka-connect
+    networks:
+      - proxynet
+
+  grafana:
+    image: "grafana/grafana:${GRAFANA_VERSION}"
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_PATHS_DATA: /var/lib/grafana
+      GF_SECURITY_ADMIN_PASSWORD: kafka
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    container_name: grafana
+    depends_on:
+      - prometheus
+    networks:
+      - proxynet
+
+  prometheus:
+    image: "prom/prometheus:${PROMETHEUS_VERSION}"
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./etc/prometheus/alert.rules:/etc/prometheus/alert.rules
+    command: "--config.file=/etc/prometheus/prometheus.yml"
+    container_name: prometheus
+    networks:
+      - proxynet
+
+  jmx-kafka-0:
+    image: "sscaling/jmx-prometheus-exporter"
+    restart: unless-stopped
+    ports:
+      - "5556:5556"
+    environment:
+      CONFIG_YML: "/etc/jmx_exporter/config.yml"
+      JVM_OPTS: ${PROMETHEUS_JMX_AGENT_JVM_OPTS}
+    volumes:
+      - ./etc/jmx_exporter/config_kafka-0.yml:/etc/jmx_exporter/config.yml
+    container_name: jmx-kafka-0
+    depends_on:
+      - kafka-0
+    networks:
+      - proxynet
+
+  jmx-kafka-1:
+    image: "sscaling/jmx-prometheus-exporter"
+    restart: unless-stopped
+    ports:
+      - "5557:5556"
+    environment:
+      CONFIG_YML: "/etc/jmx_exporter/config.yml"
+      JVM_OPTS: ${PROMETHEUS_JMX_AGENT_JVM_OPTS}
+    volumes:
+      - ./etc/jmx_exporter/config_kafka-1.yml:/etc/jmx_exporter/config.yml
+    container_name: jmx-kafka-1
+    depends_on:
+      - kafka-1
+    networks:
+      - proxynet
+
+  jmx-kafka-2:
+    image: "sscaling/jmx-prometheus-exporter"
+    restart: unless-stopped
+    ports:
+      - "5558:5556"
+    environment:
+      CONFIG_YML: "/etc/jmx_exporter/config.yml"
+      JVM_OPTS: ${PROMETHEUS_JMX_AGENT_JVM_OPTS}
+    volumes:
+      - ./etc/jmx_exporter/config_kafka-2.yml:/etc/jmx_exporter/config.yml
+    container_name: jmx-kafka-2
+    depends_on:
+      - kafka-2
+    networks:
+      - proxynet
+
+  kafka-connect:
+    build:
+      context: ./kafka-connect
+    ports:
+      - "8083:8083"  # REST API Kafka Connect
+      - "9875:9875"
+      - "9876:9876"
+    depends_on:
+      - kafka-0
+      - kafka-1
+      - kafka-2
+      - schema-registry
+      - postgres
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-0:9092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: 'kafka-connect'
+      CONNECT_REST_ADVERTISED_HOST_NAME: 'localhost'
+
+      # Хранение конфигурации, смещений и статусов
+      CONNECT_CONFIG_STORAGE_TOPIC: 'connect-config-storage'
+      CONNECT_OFFSET_STORAGE_TOPIC: 'connect-offset-storage'
+      CONNECT_STATUS_STORAGE_TOPIC: 'connect-status-storage'
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+      # Конвертеры
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+
+      # Пути к плагинам
+      CONNECT_PLUGIN_PATH: /usr/share/java,/etc/kafka-connect/jars
+    volumes:
+      - ./confluent-hub-components/:/etc/kafka-connect/jars
+    networks:
+      - proxynet
+
+networks:
+  proxynet:
+    name: custom_network                               # Общая пользовательская сеть Docker
+
+volumes:
+  kafka_0_data:
+  kafka_1_data:
+  kafka_2_data:
+  postgres_data:

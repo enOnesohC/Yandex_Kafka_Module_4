@@ -1,0 +1,7 @@
+.venv/
+venv/
+__pycache__/
+
+# ---------- Docker / project ----------
+# Плагины Debezium — крупные jar'ы, их место в Dockerfile, не в git
+confluent-hub-components/

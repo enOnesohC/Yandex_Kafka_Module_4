@@ -1,0 +1,108 @@
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+hostPort: kafka-0:9999
+
+rules:
+  # ==================== CONTROLLER ====================
+  # kafka.controller:type=KafkaController,name=OfflinePartitionsCount  <>Value
+  #   -> kafka_controller_offlinepartitionscount
+  - pattern: 'kafka.controller<type=KafkaController, name=(.+)><>Value'
+    name: 'kafka_controller_$1'
+    type: GAUGE
+
+  # kafka.controller:type=ControllerStats,name=LeaderElectionRateAndTimeMs  <>Count / <>*Rate
+  #   -> kafka_controller_leaderelectionrateandtimems_count / _meanrate и т.п.
+  - pattern: 'kafka.controller<type=ControllerStats, name=(.+)><>Count'
+    name: 'kafka_controller_$1_total'
+    type: COUNTER
+  - pattern: 'kafka.controller<type=ControllerStats, name=(.+)><>(\w+)'
+    name: 'kafka_controller_$1_$2'
+    type: GAUGE
+
+  # ==================== REPLICA ====================
+  # kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions  <>Value
+  #   -> kafka_server_replicamanager_underreplicatedpartitions
+  - pattern: 'kafka.server<type=ReplicaManager, name=(.+)><>Value'
+    name: 'kafka_server_replicamanager_$1'
+    type: GAUGE
+  - pattern: 'kafka.server<type=ReplicaManager, name=(.+)><>(\w+)'
+    name: 'kafka_server_replicamanager_$1_$2'
+    type: GAUGE
+
+  # ==================== KAFKA SERVER ====================
+  # kafka.server:type=KafkaServer,name=BrokerState  <>Value
+  #   -> kafka_server_kafkaserver_brokerstate
+  - pattern: 'kafka.server<type=KafkaServer, name=(.+)><>Value'
+    name: 'kafka_server_kafkaserver_$1'
+    type: GAUGE
+
+  # ==================== BROKER TOPIC (c топиком — ДО правила без топика!) ====================
+  # kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec,topic=foo  <>Count
+  #   -> kafka_server_brokertopicmetrics_messagesinpersec_total{topic="foo"}
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=(.+), topic=(.+)><>Count'
+    name: 'kafka_server_brokertopicmetrics_$1_total'
+    labels:
+      topic: '$2'
+    type: COUNTER
+  # то же, но Rate-атрибуты (OneMinuteRate, MeanRate и т.п.)
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=(.+), topic=(.+)><>(\w+)'
+    name: 'kafka_server_brokertopicmetrics_$1_$3'
+    labels:
+      topic: '$2'
+    type: GAUGE
+  # агрегат по брокеру (без topic)
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=(.+)><>Count'
+    name: 'kafka_server_brokertopicmetrics_$1_total'
+    type: COUNTER
+  - pattern: 'kafka.server<type=BrokerTopicMetrics, name=(.+)><>(\w+)'
+    name: 'kafka_server_brokertopicmetrics_$1_$2'
+    type: GAUGE
+
+  # ==================== LOG ====================
+  # kafka.log:type=Log,name=Size,topic=foo,partition=0  <>Value
+  - pattern: 'kafka.log<type=Log, name=(.+), topic=(.+), partition=(.+)><>Value'
+    name: 'kafka_log_$1'
+    labels:
+      topic: '$2'
+      partition: '$3'
+    type: GAUGE
+
+  # ==================== NETWORK ====================
+  # kafka.network:type=RequestMetrics,name=RequestsPerSec,request=Produce  <>Count
+  - pattern: 'kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>Count'
+    name: 'kafka_network_requestmetrics_$1_total'
+    labels:
+      request: '$2'
+    type: COUNTER
+  - pattern: 'kafka.network<type=RequestMetrics, name=(.+), request=(.+)><>(\w+)'
+    name: 'kafka_network_requestmetrics_$1_$3'
+    labels:
+      request: '$2'
+    type: GAUGE
+  # kafka.network:type=SocketServer,name=NetworkProcessorAvgIdlePercent  <>Value
+  - pattern: 'kafka.network<type=SocketServer, name=(.+)><>Value'
+    name: 'kafka_network_socketserver_$1'
+    type: GAUGE
+
+  # ==================== JVM (часто нужно для дашбордов) ====================
+  - pattern: 'java.lang<type=Memory><HeapMemoryUsage>(\w+)'
+    name: 'jvm_memory_heap_$1'
+    type: GAUGE
+  - pattern: 'java.lang<type=Memory><NonHeapMemoryUsage>(\w+)'
+    name: 'jvm_memory_nonheap_$1'
+    type: GAUGE
+  - pattern: 'java.lang<type=GarbageCollector, name=(.+)><>CollectionCount'
+    name: 'jvm_gc_collection_count'
+    labels:
+      gc: '$1'
+    type: COUNTER
+  - pattern: 'java.lang<type=GarbageCollector, name=(.+)><>CollectionTime'
+    name: 'jvm_gc_collection_time_ms'
+    labels:
+      gc: '$1'
+    type: COUNTER
+
+  # ==================== SAFETY NET ====================
+  # всё, что не покрыто правилами выше, остаётся с «длинным» именем.
+  # Не мешает коротким именам, но гарантирует, что ничего не потеряется.
+  - pattern: '.*'
