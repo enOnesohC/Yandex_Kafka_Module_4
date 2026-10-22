@@ -64,7 +64,7 @@ curl.exe -s http://localhost:8083/connectors/pg-connector/status
 
 Ожидаемый вывод: "connector":{"state":"RUNNING"..."
 
-## Шаг 5.
+## Шаг 6.
 
 Подключиться к БД, используя команду:
 docker exec -it postgres psql -h 127.0.0.1 -U postgres-user -d customers
@@ -81,19 +81,19 @@ INSERT INTO orders (user_id, product_name, quantity) VALUES (1, 'Product B', 1);
 INSERT INTO orders (user_id, product_name, quantity) VALUES (2, 'Product C', 5);
 INSERT INTO orders (user_id, product_name, quantity) VALUES (3, 'Product D', 3);
 
-## Шаг 6.
+## Шаг 7.
 
 Выполнить скрипт из файла GetMessages.py
 
 Ожидаемый результат: Количество выведенных сообщений должно быть 8 (по 4 в каждом топике)
 
-## Шаг 7.
+## Шаг 8.
 
 Перейти по адресу: http://localhost:9090/targets?search=
 
 Ожидаемый результат: все targets имеют статус "UP"
 
-## Шаг 8.
+## Шаг 9.
 
 Перейти по адресу: http://localhost:3001/
 Зайти в grafana c использованием логина "admin" и пароля "kafka"
